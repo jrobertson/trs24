@@ -13,21 +13,49 @@ class Trs24
   def initialize(lookup, activities, debug: false)
 
     @debug = debug
-    @mw = MindWords.new(lookup)
+    @lookup, _ = RXFHelper.read(lookup)
     @activities = activities
     collect_times()
 
   end
 
+  def summary()
+
+    @h.map do |key,value|
+
+      seconds = value[:summary][:duration]
+      next unless seconds
+
+      [key, Subunit.seconds(seconds).strfunit("%xi")]
+
+    end.compact.to_h
+
+  end
+
+  def to_h()
+    @h
+  end
+
+  private
+  
   def collect_times()
 
+    words = @lookup.strip.lines.flat_map {|x| x[/.*(?= #)/].split(/ *\| */)}
+    new_words = @activities.map(&:first)
+    @lookup += "\n" + (new_words - words).map {|x| x + ' #unknown'}.join("\n")
+    @lookup += "\nunknown #other"
+    puts '@lookup: ' + @lookup.inspect
+    
+    @mw = MindWords.new(@lookup)
     rows = @activities.map {|s, t1, t2| [t1, s, ((t2 || Time.now) - t1).round] }
 
+    puts 'xml : ' + @mw.to_xml if @debug
     doc = Rexle.new(@mw.to_xml)
     @h = LineTree.new(@mw.to_tree).to_h
 
     a = rows.map do |time, activity, duration|
 
+      puts 'activity: ' + activity if @debug
       e = doc.root.element("//[@title='#{activity}']")
       path = e.attributes[:breadcrumb].split(' / ')
       puts 'path: ' + path.inspect if @debug
@@ -59,29 +87,7 @@ class Trs24
 
       end
 
-    end
-    
+    end    
 
-  end
-
-  def summary()
-
-    @h.map do |key,value|
-
-      seconds = value[:summary][:duration]
-      next unless seconds
-
-      duration = Subunit.new(units={minutes:60, hours:60},
-                             seconds: seconds).strfunit("%xi")
-
-       [key, duration]
-
-    end.compact.to_h
-
-  end
-
-  def to_h()
-    @h
-  end
-
+  end  
 end
